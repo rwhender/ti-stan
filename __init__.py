@@ -126,7 +126,7 @@ def stan_worker(pipe, num_iter, sm, energy):
         dat = inputs['data']
         fit = sm.sampling(iter=num_iter, chains=1, algorithm='HMC',
                           init=[{'alpha': alpha},], n_jobs=1, data=dat,
-                          check_hmc_diagnostics=False)
+                          check_hmc_diagnostics=False, refresh=0)
         fitout = fit.extract()
         alpha = fitout['alpha'][-1]
         if isinstance(alpha, float):
@@ -171,7 +171,7 @@ def stan_worker_serial(alpha, dat, num_iter, sm, energy):
     energy_count = 0
     fit = sm.sampling(iter=num_iter, chains=1, algorithm='HMC',
                       init=[{'alpha': alpha},], n_jobs=1, data=dat,
-                      check_hmc_diagnostics=False)
+                      check_hmc_diagnostics=False, refresh=0)
     fitout = fit.extract()
     alpha = fitout['alpha'][-1]
     if isinstance(alpha, float):
