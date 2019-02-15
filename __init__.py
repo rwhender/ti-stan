@@ -13,6 +13,7 @@ from numpy import log, exp, mean, zeros, argsort, Inf, arange, array
 from numpy.random import rand, seed
 from copy import copy
 import pystan
+import cProfile
 
 
 class TIStan(object):
@@ -32,7 +33,7 @@ class TIStan(object):
         self.num_params = num_params
 
     def run(self, data, num_mcmc_iter=200, num_chains=16, wmax_over_wmin=1.05,
-            serial=False, smooth=True, verbose=False):
+            serial=False, smooth=True, verbose=False, profile=False):
         """
         Run thermodynamic integration with given settings (or use defaults).
         All parameters after the first (data) are optional.
@@ -54,6 +55,8 @@ class TIStan(object):
             default True, if True, smooth ee-beta curve by discarding some samples
         verbose : bool, optional
             default False, if True, print messages about progress
+        profile : bool, optional
+            default False, if True, and serial is False, profile parallel parts
         
         Returns
         -------
@@ -74,7 +77,8 @@ class TIStan(object):
         out = ti(energy=self.energy, num_params=self.num_params,
                  num_mcmc_iter=num_mcmc_iter, num_chains=num_chains,
                  wmax_over_wmin=wmax_over_wmin, sm=self.sm, data=data,
-                 serial=serial, smooth=smooth, verbose=verbose)
+                 serial=serial, smooth=smooth, verbose=verbose,
+                 profile=profile)
         self.model_logL = out[0]
         self.num_chains_removed = out[1]
         self.beta_list = out[2]
@@ -82,6 +86,11 @@ class TIStan(object):
         self.alpha = out[4]
         self.EstarX = out[5]
         return out
+
+
+def profile_worker(pipe, num_iter, sm, energy, num):
+    cProfile.runctx('stan_worker(pipe, num_iter, sm, energy)', globals(),
+                    locals(), 'prof%d.prof' %num)
 
 
 def stan_worker(pipe, num_iter, sm, energy):
@@ -226,7 +235,7 @@ def chain_resample(weight, alpha, EstarX, num_chains_removed, num_chains):
 
 
 def ti(energy, num_params, num_mcmc_iter, num_chains, wmax_over_wmin, sm,
-       data, serial=False, smooth=True, verbose=False):
+       data, serial=False, smooth=True, verbose=False, profile=False):
     """Thermodynamic integration, after Goggans and Chi, 2004
 
     Parameters
@@ -294,8 +303,13 @@ def ti(energy, num_params, num_mcmc_iter, num_chains, wmax_over_wmin, sm,
         parents, children, procs = [], [], []
         for m in range(num_chains):
             parent, child = Pipe()
-            proc = Process(target=stan_worker,
-                           args=(child, num_mcmc_iter, sm, energy))
+            if profile:
+                proc = Process(target=profile_worker,
+                               args=(child, num_mcmc_iter, sm, energy, m))
+                print("blergh")
+            else:
+                proc = Process(target=stan_worker,
+                               args=(child, num_mcmc_iter, sm, energy))
             proc.start()
             procs.append(proc)
             parents.append(parent)
