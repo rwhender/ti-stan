@@ -8,7 +8,8 @@ Thermodynamic Integration, after Goggans and Chi, which is after Skilling
 @author: Wesley Henderson
 """
 
-from multiprocessing import Process, Pipe
+from multiprocessing import Pool
+from itertools import starmap
 from numpy import log, exp, mean, zeros, argsort, Inf, arange, array
 from numpy.random import rand, seed
 from copy import copy
@@ -90,73 +91,15 @@ class TIStan(object):
 
 def profile_worker(pipe, num_iter, sm, energy, num):
     cProfile.runctx('stan_worker(pipe, num_iter, sm, energy)', globals(),
-                    locals(), 'prof%d.prof' %num)
+                    locals(), 'prof%d.prof' % num)
 
 
-def stan_worker(pipe, num_iter, sm, energy):
-    """Worker function that invokes HMC from Stan.
+def stan_worker(dat, num_iter, sm, energy, alpha):
+    """
+    Worker function that invokes HMC from Stan
 
     Parameters
     ----------
-    pipe : multiprocessing.Pipe()
-        connection object to communicate with controlling process
-    num_iter : int
-        number of HMC iterations
-    sm : pystan.StanModel
-        The StanModel object
-    energy : function handle
-        energy function
-
-    Pipe output
-    -----------
-    alpha - most recent chain sample
-    EstarX - energy of most recent chain sample
-
-    Pipe input
-    ----------
-    run : boolean
-        if True, while loops should continue; if False, end while loop
-    alpha : array-like
-        array of parameters. These should be scaled such that the
-        maximum value is 1 and the minimum is 0.
-    data : dict
-        Dictionary containing everything specified in the 'data' block of the
-        stan model. beta inverse temp is included here
-    """
-    seed()
-    while True:
-        energy_count = 0
-        inputs = pipe.recv()
-        run = inputs['run']
-        if not run:
-            pipe.send(None)
-            break
-        alpha = inputs['alpha']
-        dat = inputs['data']
-        fit = sm.sampling(iter=num_iter, chains=1, algorithm='HMC',
-                          init=[{'alpha': alpha},], n_jobs=1, data=dat,
-                          check_hmc_diagnostics=False, refresh=0)
-        fitout = fit.extract()
-        alpha = fitout['alpha'][-1]
-        if isinstance(alpha, float):
-            alpha = array([alpha,])
-        # EstarX = -1 * fitout['lp__'][-1]
-        EstarX = energy(alpha, dat)
-        output = {'alpha': alpha, 'EstarX': EstarX,
-                  'energy_count': energy_count + 1}
-        pipe.send(output)
-
-
-def stan_worker_serial(alpha, dat, num_iter, sm, energy):
-    """
-    Worker function that invokes HMC from Stan, but serially so it's easier to
-    debug.
-    
-    Parameters
-    ----------
-    alpha : array-like
-        array of parameters. These should be scaled such that the
-        maximum value is 1 and the minimum is 0.
     dat : dict
         Dictionary containing everything specified in the 'data' block of the
         stan model. beta inverse temp is included here
@@ -166,7 +109,10 @@ def stan_worker_serial(alpha, dat, num_iter, sm, energy):
         The StanModel object
     energy : function handle
         energy function
-    
+    alpha : array-like
+        array of parameters. These should be scaled such that the
+        maximum value is 1 and the minimum is 0.
+
     Returns
     -------
     alpha : array-like
@@ -174,17 +120,17 @@ def stan_worker_serial(alpha, dat, num_iter, sm, energy):
     EstarX : float
         energy of most recent chain sample
     energy_count : int
-        
+
     """
     seed()
     energy_count = 0
     fit = sm.sampling(iter=num_iter, chains=1, algorithm='HMC',
-                      init=[{'alpha': alpha},], n_jobs=1, data=dat,
+                      init=[{'alpha': alpha}, ], n_jobs=1, data=dat,
                       check_hmc_diagnostics=False, refresh=0)
     fitout = fit.extract()
     alpha = fitout['alpha'][-1]
     if isinstance(alpha, float):
-        alpha = array([alpha,])
+        alpha = array([alpha, ])
     # EstarX = -1 * fitout['lp__'][-1]
     EstarX = energy(alpha, dat)
     return alpha, EstarX, energy_count + 1
@@ -298,83 +244,52 @@ def ti(energy, num_params, num_mcmc_iter, num_chains, wmax_over_wmin, sm,
     num_chains_removed = []
     chain_resample(weight, alpha, EstarX, num_chains_removed, num_chains)
 
-    if not serial:
-        # Set up chain processes and communication pipes
-        parents, children, procs = [], [], []
-        for m in range(num_chains):
-            parent, child = Pipe()
-            if profile:
-                proc = Process(target=profile_worker,
-                               args=(child, num_mcmc_iter, sm, energy, m))
-                print("blergh")
-            else:
-                proc = Process(target=stan_worker,
-                               args=(child, num_mcmc_iter, sm, energy))
-            proc.start()
-            procs.append(proc)
-            parents.append(parent)
-            children.append(child)
-
-    # Start beta loop
-    step = 0
-    beta = beta_list[-1]
-    while beta > 0 and beta < 1 and step <= Inf:
-        # MCMC loop
-        if verbose:
-            print("                                                  ", end='\r')
-            print("beta =", beta, "ee =", expected_energy[-1], end='\r')
-        data['beta'] = copy(beta)
-        # Send current step off to chains
-        if not serial:
-            # The multiprocessing way
+    # Set up input lists for stan worker
+    stan_input_gen = [data, num_mcmc_iter, sm, energy]
+    # Start pool
+    with Pool() as p:
+        # Start beta loop
+        step = 0
+        beta = beta_list[-1]
+        while beta > 0 and beta < 1 and step <= Inf:
+            # MCMC loop
+            if verbose:
+                print("                                                  ", end='\r')
+                print("beta =", beta, "ee =", expected_energy[-1], end='\r')
+            data['beta'] = copy(beta)
+            # Send current step off to chains
+            stan_inputs = [stan_input_gen for i in range(num_chains)]
             for m in range(num_chains):
-                inputs = {'run': True,
-                          'alpha': alpha[:, m],
-                          'data': data}
-                parents[m].send(inputs)
-            # Wait for response
+                stan_inputs[m] = stan_inputs[m] + [alpha[:, m], ]
+            # Evolve chains
+            stan_outputs = p.starmap(stan_worker, stan_inputs)
             for m in range(num_chains):
-                output = parents[m].recv()
-                alpha[:, m] = output['alpha']
-                EstarX[m] = output['EstarX']
-                energy_count += output['energy_count']
-        else:
-            # The serial way
-            for m in range(num_chains):
-                output = stan_worker_serial(alpha[:, m], data, num_mcmc_iter,
-                                            sm, energy)
-                alpha[:, m] = output[0]
-                EstarX[m] = output[1]
-                energy_count += output[2]
-        # Get the expected energy at this value of beta
-        expected_energy.append(EstarX.mean())
-        # Compute new beta value
-        delta_beta = rate_constant / (max(EstarX) - min(EstarX))
-        beta = min(beta + delta_beta, 1)
-        beta_list.append(beta)
-        if beta_list[-2] + delta_beta > 1:
-            delta_beta = 1 - beta_list[-2]
-        weight = exp(-delta_beta * EstarX)
-        # Resample chains
-        chain_resample(weight, alpha, EstarX, num_chains_removed, num_chains)
-        step += 1
-    # Compute model log likelihood, but first smooth expected energy
-    if smooth:
-        beta_list, expected_energy, _ = ee_smooth(beta_list, expected_energy)
-    area = 0.0
-    beta_length = len(beta_list)
-    for i in arange(1, beta_length):
-        area += ((1/2) * (expected_energy[i] + expected_energy[i-1]) *
-                 (beta_list[i] - beta_list[i-1]))
-    model_log_likelihood = -1 * area
-    if not serial:
-    # Send chain processes a single 'False', causing their main while loops to
-    # end.
-        for parent in parents:
-            parent.send({'run': False})
-    # Join processes
-        for proc in procs:
-            proc.join()
+                alpha[:, m] = stan_outputs[m][0]
+                EstarX[m] = stan_outputs[m][1]
+                energy_count += stan_outputs[m][2]
+            # Get the expected energy at this value of beta
+            expected_energy.append(EstarX.mean())
+            # Compute new beta value
+            delta_beta = rate_constant / (max(EstarX) - min(EstarX))
+            beta = min(beta + delta_beta, 1)
+            beta_list.append(beta)
+            if beta_list[-2] + delta_beta > 1:
+                delta_beta = 1 - beta_list[-2]
+            weight = exp(-delta_beta * EstarX)
+            # Resample chains
+            chain_resample(weight, alpha, EstarX, num_chains_removed,
+                           num_chains)
+            step += 1
+        # Compute model log likelihood, but first smooth expected energy
+        if smooth:
+            beta_list, expected_energy, _ = ee_smooth(beta_list,
+                                                      expected_energy)
+        area = 0.0
+        beta_length = len(beta_list)
+        for i in arange(1, beta_length):
+            area += ((1/2) * (expected_energy[i] + expected_energy[i-1]) *
+                     (beta_list[i] - beta_list[i-1]))
+        model_log_likelihood = -1 * area
     # Clears status printing carriage return biz
     # print('')
     return (model_log_likelihood, num_chains_removed, beta_list,
