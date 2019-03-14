@@ -244,52 +244,50 @@ def ti(energy, num_params, num_mcmc_iter, num_chains, wmax_over_wmin, sm,
     num_chains_removed = []
     chain_resample(weight, alpha, EstarX, num_chains_removed, num_chains)
 
-    # Set up input lists for stan worker
-    stan_input_gen = [data, num_mcmc_iter, sm, energy]
-    # Start pool
-    with Pool() as p:
-        # Start beta loop
-        step = 0
-        beta = beta_list[-1]
-        while beta > 0 and beta < 1 and step <= Inf:
-            # MCMC loop
-            if verbose:
-                print("                                                  ", end='\r')
-                print("beta =", beta, "ee =", expected_energy[-1], end='\r')
-            data['beta'] = copy(beta)
-            # Send current step off to chains
-            stan_inputs = [stan_input_gen for i in range(num_chains)]
-            for m in range(num_chains):
-                stan_inputs[m] = stan_inputs[m] + [alpha[:, m], ]
-            # Evolve chains
-            stan_outputs = p.starmap(stan_worker, stan_inputs)
-            for m in range(num_chains):
-                alpha[:, m] = stan_outputs[m][0]
-                EstarX[m] = stan_outputs[m][1]
-                energy_count += stan_outputs[m][2]
-            # Get the expected energy at this value of beta
-            expected_energy.append(EstarX.mean())
-            # Compute new beta value
-            delta_beta = rate_constant / (max(EstarX) - min(EstarX))
-            beta = min(beta + delta_beta, 1)
-            beta_list.append(beta)
-            if beta_list[-2] + delta_beta > 1:
-                delta_beta = 1 - beta_list[-2]
-            weight = exp(-delta_beta * EstarX)
-            # Resample chains
-            chain_resample(weight, alpha, EstarX, num_chains_removed,
-                           num_chains)
-            step += 1
-        # Compute model log likelihood, but first smooth expected energy
-        if smooth:
-            beta_list, expected_energy, _ = ee_smooth(beta_list,
-                                                      expected_energy)
-        area = 0.0
-        beta_length = len(beta_list)
-        for i in arange(1, beta_length):
-            area += ((1/2) * (expected_energy[i] + expected_energy[i-1]) *
-                     (beta_list[i] - beta_list[i-1]))
-        model_log_likelihood = -1 * area
+    # Start beta loop
+    step = 0
+    beta = beta_list[-1]
+    while beta > 0 and beta < 1 and step <= Inf:
+        # MCMC loop
+        if verbose:
+            print("                                                  ", end='\r')
+            print("beta =", beta, "ee =", expected_energy[-1], end='\r')
+        data['beta'] = copy(beta)
+        # Send current step off to chains
+        stan_init = [{'alpha': alpha[:, m]} for m in range(num_chains)]
+        fit = sm.sampling(iter=num_mcmc_iter, chains=num_chains,
+                          algorithm='HMC',
+                          init=stan_init, data=data,
+                          check_hmc_diagnostics=False, refresh=0)
+        fitout = fit.extract(permuted=False)
+        alpha = (fitout[-1, :, :num_params]).T
+        if isinstance(alpha, float):
+            alpha = array([alpha, ])
+        for m in range(num_chains):
+            EstarX[m] = energy(alpha[:, m], data)
+        # Get the expected energy at this value of beta
+        expected_energy.append(EstarX.mean())
+        # Compute new beta value
+        delta_beta = rate_constant / (max(EstarX) - min(EstarX))
+        beta = min(beta + delta_beta, 1)
+        beta_list.append(beta)
+        if beta_list[-2] + delta_beta > 1:
+            delta_beta = 1 - beta_list[-2]
+        weight = exp(-delta_beta * EstarX)
+        # Resample chains
+        chain_resample(weight, alpha, EstarX, num_chains_removed,
+                       num_chains)
+        step += 1
+    # Compute model log likelihood, but first smooth expected energy
+    if smooth:
+        beta_list, expected_energy, _ = ee_smooth(beta_list,
+                                                  expected_energy)
+    area = 0.0
+    beta_length = len(beta_list)
+    for i in arange(1, beta_length):
+        area += ((1/2) * (expected_energy[i] + expected_energy[i-1]) *
+                 (beta_list[i] - beta_list[i-1]))
+    model_log_likelihood = -1 * area
     # Clears status printing carriage return biz
     # print('')
     return (model_log_likelihood, num_chains_removed, beta_list,
