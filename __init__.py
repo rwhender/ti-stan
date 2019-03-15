@@ -8,8 +8,6 @@ Thermodynamic Integration, after Goggans and Chi, which is after Skilling
 @author: Wesley Henderson
 """
 
-from multiprocessing import Pool
-from itertools import starmap
 from numpy import log, exp, mean, zeros, argsort, Inf, arange, array
 from numpy.random import rand, seed
 from copy import copy
@@ -53,12 +51,13 @@ class TIStan(object):
             if True, run chain evolution serially. If false, run chain
             evolution in parallel using multiprocessing module
         smooth : bool, optional
-            default True, if True, smooth ee-beta curve by discarding some samples
+            default True, if True, smooth ee-beta curve by discarding some
+            samples
         verbose : bool, optional
             default False, if True, print messages about progress
         profile : bool, optional
             default False, if True, and serial is False, profile parallel parts
-        
+
         Returns
         -------
         model_log_likelihood : float
