@@ -255,7 +255,7 @@ def ti(energy, num_params, num_mcmc_iter, num_chains, wmax_over_wmin, sm,
         # Send current step off to chains
         stan_init = [{'alpha': alpha[:, m]} for m in range(num_chains)]
         fit = sm.sampling(iter=num_mcmc_iter, chains=num_chains,
-                          algorithm='HMC',
+                          algorithm='NUTS',
                           init=stan_init, data=data,
                           check_hmc_diagnostics=False, refresh=0)
         fitout = fit.extract(permuted=False)
