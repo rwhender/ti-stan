@@ -32,7 +32,8 @@ class TIStan(object):
         self.num_params = num_params
 
     def run(self, data, num_mcmc_iter=200, num_chains=16, wmax_over_wmin=1.05,
-            serial=False, smooth=True, verbose=False, profile=False):
+            num_workers=None, serial=False, smooth=True, verbose=False,
+            profile=False):
         """
         Run thermodynamic integration with given settings (or use defaults).
         All parameters after the first (data) are optional.
@@ -47,6 +48,9 @@ class TIStan(object):
             number of parallel MCMC chains to run
         wmax_over_wmin : float
             ratio used to set rate constant for delta beta schedule
+        num_workers : int
+            Default None. Number of processors to allow to use. None -> the
+            number of CPUs in machine
         serial : bool
             if True, run chain evolution serially. If false, run chain
             evolution in parallel using multiprocessing module
@@ -77,8 +81,8 @@ class TIStan(object):
         out = ti(energy=self.energy, num_params=self.num_params,
                  num_mcmc_iter=num_mcmc_iter, num_chains=num_chains,
                  wmax_over_wmin=wmax_over_wmin, sm=self.sm, data=data,
-                 serial=serial, smooth=smooth, verbose=verbose,
-                 profile=profile)
+                 num_workers=num_workers, serial=serial, smooth=smooth,
+                 verbose=verbose, profile=profile)
         self.model_logL = out[0]
         self.num_chains_removed = out[1]
         self.beta_list = out[2]
@@ -180,7 +184,7 @@ def chain_resample(weight, alpha, EstarX, num_chains_removed, num_chains):
 
 
 def ti(energy, num_params, num_mcmc_iter, num_chains, wmax_over_wmin, sm,
-       data, serial=False, smooth=True, verbose=False, profile=False):
+       data, num_workers, serial, smooth, verbose, profile):
     """Thermodynamic integration, after Goggans and Chi, 2004
 
     Parameters
@@ -199,6 +203,8 @@ def ti(energy, num_params, num_mcmc_iter, num_chains, wmax_over_wmin, sm,
         StanModel object
     data : dict
         data dictionary for sm and for energy function
+    num_workers : int
+        Number of processors to allow to use. None -> the number of CPUs
     serial : bool
         Default false. If True, use the non-parallelized worker function
     smooth : bool, optional
@@ -222,6 +228,8 @@ def ti(energy, num_params, num_mcmc_iter, num_chains, wmax_over_wmin, sm,
     energy_count : int
         number of times the energy function was called
     """
+    if num_workers is None:
+        num_workers = -1
     energy_count = 0
     rate_constant = log(wmax_over_wmin)
     expected_energy = []
@@ -257,7 +265,8 @@ def ti(energy, num_params, num_mcmc_iter, num_chains, wmax_over_wmin, sm,
         fit = sm.sampling(iter=num_mcmc_iter, chains=num_chains,
                           algorithm='NUTS',
                           init=stan_init, data=data,
-                          check_hmc_diagnostics=False, refresh=0)
+                          check_hmc_diagnostics=False, refresh=0,
+                          n_jobs=num_workers)
         fitout = fit.extract(permuted=False)
         alpha = (fitout[-1, :, :num_params]).T
         if isinstance(alpha, float):
