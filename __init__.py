@@ -13,10 +13,11 @@ from numpy.random import rand, seed
 from copy import copy
 import pystan
 import cProfile
+import pickle
 
 
 class TIStan(object):
-    def __init__(self, energy, stan_file, num_params):
+    def __init__(self, energy, stan_file, num_params, stan_pickle=None):
         """
         Initialize TIStan object for thermodynamic integration with PyStan.
 
@@ -26,9 +27,17 @@ class TIStan(object):
             handle to energy function
         stan_file : string
             name of stan file with model details to load
+        num_params : int
+            number of model parameters
+        stan_pickle : string
+            location of pickled stan model if available. will be used instead
+            of stan file
         """
         self.energy = energy
-        self.sm = pystan.StanModel(file=stan_file)
+        if stan_pickle:
+            self.sm = pickle.load(open(stan_pickle, 'rb'))
+        else:
+            self.sm = pystan.StanModel(file=stan_file)
         self.num_params = num_params
 
     def run(self, data, num_mcmc_iter=200, num_chains=16, wmax_over_wmin=1.05,
