@@ -42,7 +42,7 @@ class TIStan(object):
 
     def run(self, data, num_mcmc_iter=200, num_chains=16, wmax_over_wmin=1.05,
             num_workers=None, serial=False, smooth=True, verbose=False,
-            profile=False):
+            profile=False, max_iter=Inf):
         """
         Run thermodynamic integration with given settings (or use defaults).
         All parameters after the first (data) are optional.
@@ -70,6 +70,8 @@ class TIStan(object):
             default False, if True, print messages about progress
         profile : bool, optional
             default False, if True, and serial is False, profile parallel parts
+        max_iter : int
+            maximum number of temperature iterations
 
         Returns
         -------
@@ -91,7 +93,7 @@ class TIStan(object):
                  num_mcmc_iter=num_mcmc_iter, num_chains=num_chains,
                  wmax_over_wmin=wmax_over_wmin, sm=self.sm, data=data,
                  num_workers=num_workers, serial=serial, smooth=smooth,
-                 verbose=verbose, profile=profile)
+                 verbose=verbose, profile=profile, max_iter=max_iter)
         self.model_logL = out[0]
         self.num_chains_removed = out[1]
         self.beta_list = out[2]
@@ -193,7 +195,7 @@ def chain_resample(weight, alpha, EstarX, num_chains_removed, num_chains):
 
 
 def ti(energy, num_params, num_mcmc_iter, num_chains, wmax_over_wmin, sm,
-       data, num_workers, serial, smooth, verbose, profile):
+       data, num_workers, serial, smooth, verbose, profile, max_iter):
     """Thermodynamic integration, after Goggans and Chi, 2004
 
     Parameters
@@ -220,6 +222,8 @@ def ti(energy, num_params, num_mcmc_iter, num_chains, wmax_over_wmin, sm,
         default True, if True, smooth ee-beta curve by discarding some samples
     verbose : bool, optional
         default False, if True, print messages about progress
+    max_iter : int
+        maximum number of temperature iterations
 
     Returns
     -------
@@ -263,7 +267,7 @@ def ti(energy, num_params, num_mcmc_iter, num_chains, wmax_over_wmin, sm,
     # Start beta loop
     step = 0
     beta = beta_list[-1]
-    while beta > 0 and beta < 1 and step <= Inf:
+    while beta > 0 and beta < 1 and step <= max_iter:
         # MCMC loop
         if verbose:
             print("                                                  ", end='\r')
