@@ -30,6 +30,7 @@ def sin_energy(alpha, data):
 
 
 if __name__ == "__main__":
+    # Setup
     filename = 'sinusoid_data_20161004.dill'
     stanfile = 'sinusoids.stan'
     with open(filename, 'rb') as f:
@@ -59,19 +60,23 @@ if __name__ == "__main__":
     obj2 = TIStan(sin_energy, 6, stan_file=stanfile)
     obj3 = TIStan(sin_energy, 9, stan_file=stanfile)
     obj4 = TIStan(sin_energy, 12, stan_file=stanfile)
+    # Run
     out1 = obj1.run(data=data1, num_mcmc_iter=20, num_chains=32,
                     wmax_over_wmin=1.05, serial=False, smooth=False,
-                    verbose=True, max_iter=2)
+                    verbose=True)
     out2 = obj2.run(data=data2, num_mcmc_iter=20, num_chains=32,
                     wmax_over_wmin=1.05, serial=False, smooth=False,
-                    verbose=True, max_iter=2)
+                    verbose=True)
     out3 = obj3.run(data=data3, num_mcmc_iter=20, num_chains=32,
                     wmax_over_wmin=1.05, serial=False, smooth=False,
-                    verbose=True, max_iter=2)
+                    verbose=True)
     out4 = obj4.run(data=data4, num_mcmc_iter=20, num_chains=32,
                     wmax_over_wmin=1.05, serial=False, smooth=False,
-                    verbose=True, max_iter=2)
-    plt.bar([1, 2, 3], [out2[0]/out1[0], out3[0]/out1[0], out4[0]/out1[0]])
-    plt.ylabel('Log odds vs model 1')
-    plt.xlagel(('Model 2', 'Model 3', 'Model 4'))
+                    verbose=True)
+    # Plots results
+    fig, ax = plt.subplots()
+    ax.bar([1, 2, 3], [out2[0]/out1[0], out3[0]/out1[0], out4[0]/out1[0]])
+    ax.set_ylabel('Log odds vs model 1')
+    ax.set_xticks([1, 2, 3])
+    ax.set_xticklabels(['Model 2', 'Model 3', 'Model 4'])
     plt.show()
