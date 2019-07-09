@@ -5,7 +5,7 @@
 Implement STAN in TI
 
 Thermodynamic Integration, after Goggans and Chi, which is after Skilling
-@author: Wesley Henderson
+@author: R. Wesley Henderson
 """
 
 from numpy import log, exp, mean, zeros, argsort, Inf, arange, array
@@ -17,18 +17,59 @@ import pickle
 
 
 class TIStan(object):
-    def __init__(self, energy, stan_file, num_params, stan_pickle=None):
+    """
+    A class meant to facilitate model evidence estimation using thermodyanmic
+    integration with Stan, AKA TI-Stan.
+
+    Attributes
+    ----------
+    energy : function
+        a function that returns an energy value
+    num_params : int
+        number of parameters in the mathematical model being evaluated
+    sm : object
+        PyStan.StanModel type object. Used to perform NUTS to refresh sample
+        population.
+    model_logL : float
+        model evidence, result
+    num_chains_removed : array-like
+        array of chains removed for each beta, result
+    beta_list : list
+        list of beta values, result
+    expected_energy : list
+        list of expected energy values for each beta value
+    alpha : array-like
+        array of final alpha values for each chain
+    EstarX : array-like
+        array of final energy values for each chain
+
+    Methods
+    -------
+    run(data, num_mcmc_iter=200, num_chains=16, wmax_over_wmin=1.05,
+        num_workers=None, serial=False, smooth=False, verbose=False,
+        profile=False, max_iter=Inf)
+        AFter the object is initialized, this method initializes the TI
+        process. Results are returned by this method as well as stored within
+        the object.
+    """
+    def __init__(self, energy, num_params, stan_file=None, stan_pickle=None):
         """
         Initialize TIStan object for thermodynamic integration with PyStan.
+
+        To compile a model from scratch, pass a valid path to a stan file
+        in 'stan_file'.
+
+        To use a pickled pre-compiled model, pass a valid path in
+        'stan_pickle'.
 
         Parameters
         ----------
         energy : function handle
             handle to energy function
-        stan_file : string
-            name of stan file with model details to load
         num_params : int
             number of model parameters
+        stan_file : string
+            name of stan file with model details to load
         stan_pickle : string
             location of pickled stan model if available. will be used instead
             of stan file
@@ -36,12 +77,14 @@ class TIStan(object):
         self.energy = energy
         if stan_pickle:
             self.sm = pickle.load(open(stan_pickle, 'rb'))
-        else:
+        elif stan_file:
             self.sm = pystan.StanModel(file=stan_file)
+        else:
+            raise(ValueError("You must pass either stan_file or stan_pickle"))
         self.num_params = num_params
 
     def run(self, data, num_mcmc_iter=200, num_chains=16, wmax_over_wmin=1.05,
-            num_workers=None, serial=False, smooth=True, verbose=False,
+            num_workers=None, serial=False, smooth=False, verbose=False,
             profile=False, max_iter=Inf):
         """
         Run thermodynamic integration with given settings (or use defaults).
@@ -64,7 +107,7 @@ class TIStan(object):
             if True, run chain evolution serially. If false, run chain
             evolution in parallel using multiprocessing module
         smooth : bool, optional
-            default True, if True, smooth ee-beta curve by discarding some
+            default False, if True, smooth ee-beta curve by discarding some
             samples
         verbose : bool, optional
             default False, if True, print messages about progress
@@ -75,7 +118,7 @@ class TIStan(object):
 
         Returns
         -------
-        model_log_likelihood : float
+        model_logL : float
         num_chains_removed : array-like
             array of chains removed for each beta
         beta_list : list
@@ -86,8 +129,6 @@ class TIStan(object):
             array of final alpha values for each chain
         EstarX : array-like
             array of final energy values for each chain
-        energy_count : int
-            number of times the energy function was called
         """
         out = ti(energy=self.energy, num_params=self.num_params,
                  num_mcmc_iter=num_mcmc_iter, num_chains=num_chains,
@@ -172,10 +213,10 @@ def chain_resample(weight, alpha, EstarX, num_chains_removed, num_chains):
     -------
     None : None
     """
-    I = argsort(weight)
+    sorted_idxs = argsort(weight)
     weight.sort()
-    alpha = alpha[:, I]
-    EstarX = EstarX[I]
+    alpha = alpha[:, sorted_idxs]
+    EstarX = EstarX[sorted_idxs]
     weight = (num_chains / weight.sum()) * weight
     randu = rand()
     weight = weight.cumsum()
@@ -196,7 +237,8 @@ def chain_resample(weight, alpha, EstarX, num_chains_removed, num_chains):
 
 def ti(energy, num_params, num_mcmc_iter, num_chains, wmax_over_wmin, sm,
        data, num_workers, serial, smooth, verbose, profile, max_iter):
-    """Thermodynamic integration, after Goggans and Chi, 2004
+    """
+    Thermodynamic integration, after Goggans and Chi, 2004
 
     Parameters
     ----------
@@ -258,8 +300,7 @@ def ti(energy, num_params, num_mcmc_iter, num_chains, wmax_over_wmin, sm,
     deltabeta = min(rate_constant / (max(EstarX) - min(EstarX)), 1)
     beta_list.append(deltabeta)
 
-    # Resample the initial chains. Probably need to break this into its own
-    # function!
+    # Resample the initial chains
     weight = exp(-deltabeta * EstarX)
     num_chains_removed = []
     chain_resample(weight, alpha, EstarX, num_chains_removed, num_chains)
@@ -299,7 +340,7 @@ def ti(energy, num_params, num_mcmc_iter, num_chains, wmax_over_wmin, sm,
         chain_resample(weight, alpha, EstarX, num_chains_removed,
                        num_chains)
         step += 1
-    # Compute model log likelihood, but first smooth expected energy
+    # Compute model log likelihood, but first maybe smooth expected energy
     if smooth:
         beta_list, expected_energy, _ = ee_smooth(beta_list,
                                                   expected_energy)
