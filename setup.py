@@ -8,9 +8,16 @@ Created on Wed Jul 10 10:31:37 2019
 
 from setuptools import setup
 
+
+def readme():
+    with open('README.rst') as f:
+        return f.read()
+
+
 setup(name='TIStan',
       version='0.1',
       description='Adaptively annealed thermodynamic integration with Stan',
+      long_description=readme(),
       url='https://github.com/rwhender/ti-stan',
       author='Wesley Henderson',
       author_email='wesley.henderson11@gmail.com',
