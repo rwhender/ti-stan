@@ -14,10 +14,14 @@ TIStan depends on pystan, numpy, and dill. These packages should be installed by
 
 After installation, a dummy test can be run to make sure everything was installed correctly. This test will not produce valid evidence values. From a Python 3 console run,
 
-`from TIStan.tests import tests
-tests.dummy_test()`
+```
+from TIStan.tests import tests
+tests.dummy_test()
+```
 
 To run a more thorough test that should produce valid evidence values for the example problem run,
 
-`from TIStan.tests import tests
-tests.full_test()`
+```
+from TIStan.tests import tests
+tests.full_test()
+```
