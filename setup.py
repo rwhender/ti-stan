@@ -6,11 +6,11 @@ Created on Wed Jul 10 10:31:37 2019
 @author: R. Wesley Henderson
 """
 
-from setuptools import setup
+from setuptools import setup, find_packages
 
 
 def readme():
-    with open('README.md') as f:
+    with open('README.md', "r") as f:
         return f.read()
 
 
@@ -18,10 +18,10 @@ setup(name='TIStan',
       version='0.1',
       description='Adaptively annealed thermodynamic integration with Stan',
       long_description=readme(),
+      long_description_content_type="text/markdown",
       url='https://github.com/rwhender/ti-stan',
       author='Wesley Henderson',
       author_email='wesley.henderson11@gmail.com',
       license='LGPL-3.0-or-later',
-      packages=['TIStan'],
-      install_requires=['pystan', 'numpy', 'matplotlib', 'dill'],
-      zip_safe=False)
+      packages=find_packages(),
+      install_requires=['pystan', 'numpy', 'matplotlib', 'dill'])
