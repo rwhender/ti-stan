@@ -16,12 +16,12 @@ After installation, a dummy test can be run to make sure everything was installe
 
 ```
 from TIStan.tests import tests
-tests.dummy_test()
+out = tests.dummy_test()
 ```
 
 To run a more thorough test that should produce valid evidence values for the example problem run,
 
 ```
 from TIStan.tests import tests
-tests.full_test()
+out = tests.full_test()
 ```

@@ -15,7 +15,7 @@ def readme():
 
 
 setup(name='TIStan',
-      version='0.1',
+      version='0.1.3',
       description='Adaptively annealed thermodynamic integration with Stan',
       long_description=readme(),
       long_description_content_type="text/markdown",
@@ -24,4 +24,5 @@ setup(name='TIStan',
       author_email='wesley.henderson11@gmail.com',
       license='LGPL-3.0-or-later',
       packages=find_packages(),
+      package_data={'TIStan.tests': ['*.dill', '*.stan']},
       install_requires=['pystan', 'numpy', 'matplotlib', 'dill'])
