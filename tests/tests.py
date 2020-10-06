@@ -8,7 +8,7 @@ Created on Wed Jul 10 08:46:00 2019
 
 import numpy as np
 from numpy import matlib
-from .. import TIStan
+from TIStan.tistan import TIStan
 import dill
 import matplotlib.pyplot as plt
 import os
@@ -147,3 +147,7 @@ def dummy_test():
     ax.set_xticklabels(['Model 2', 'Model 3', 'Model 4'])
     plt.show()
     return out1, out2, out3, out4
+
+
+if __name__ == "__main__":
+    out = dummy_test()
